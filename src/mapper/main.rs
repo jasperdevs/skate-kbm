@@ -79,7 +79,7 @@ fn main() {
 }
 
 fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Arc<AtomicBool>) {
-    let mut mouse_input = MouseInput::new(config.mouse_capture);
+    let mut mouse_input = MouseInput::new(config.cursor_lock);
     let mut mouse = MouseState::default();
     let mut update_failures = 0u8;
     let mut tick = 0u32;
@@ -130,22 +130,25 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
 
 struct MouseInput {
     source: MouseInputSource,
-    _raw_cursor_lock: Option<CursorCapture>,
+    raw_cursor_lock_mode: CursorLockMode,
+    active_raw_cursor_lock: Option<CursorCapture>,
 }
 
 impl MouseInput {
-    fn new(capture: bool) -> Self {
+    fn new(cursor_lock: CursorLockMode) -> Self {
         if let Some(raw) = RawMouseInput::new() {
             return Self {
                 source: MouseInputSource::Raw(raw),
-                _raw_cursor_lock: capture.then(CursorCapture::new),
+                raw_cursor_lock_mode: cursor_lock,
+                active_raw_cursor_lock: None,
             };
         }
 
-        if capture {
+        if cursor_lock != CursorLockMode::Off {
             return Self {
                 source: MouseInputSource::Capture(CursorCapture::new()),
-                _raw_cursor_lock: None,
+                raw_cursor_lock_mode: CursorLockMode::Off,
+                active_raw_cursor_lock: None,
             };
         }
 
@@ -153,14 +156,19 @@ impl MouseInput {
             source: MouseInputSource::Cursor {
                 last_pos: cursor_pos(),
             },
-            _raw_cursor_lock: None,
+            raw_cursor_lock_mode: CursorLockMode::Off,
+            active_raw_cursor_lock: None,
         }
     }
 
     fn delta(&mut self) -> (i32, i32) {
+        if matches!(&self.source, MouseInputSource::Raw(_)) {
+            self.update_raw_cursor_lock();
+        }
+
         match &mut self.source {
             MouseInputSource::Raw(raw) => {
-                if let Some(lock) = &self._raw_cursor_lock {
+                if let Some(lock) = &self.active_raw_cursor_lock {
                     lock.keep_centered();
                 }
                 raw.delta()
@@ -179,11 +187,28 @@ impl MouseInput {
     }
 
     fn mode_name(&self) -> &'static str {
-        match (&self.source, self._raw_cursor_lock.is_some()) {
-            (MouseInputSource::Raw(_), true) => "raw with cursor lock",
-            (MouseInputSource::Raw(_), false) => "raw",
+        match (&self.source, self.raw_cursor_lock_mode) {
+            (MouseInputSource::Raw(_), CursorLockMode::HoldButton) => "raw with hold-to-lock cursor",
+            (MouseInputSource::Raw(_), CursorLockMode::Always) => "raw with always-on cursor lock",
+            (MouseInputSource::Raw(_), CursorLockMode::Off) => "raw",
             (MouseInputSource::Capture(_), _) => "cursor-capture fallback",
             (MouseInputSource::Cursor { .. }, _) => "cursor fallback",
+        }
+    }
+
+    fn update_raw_cursor_lock(&mut self) {
+        let should_lock = match self.raw_cursor_lock_mode {
+            CursorLockMode::Always => true,
+            CursorLockMode::HoldButton => primary_mouse_down() || secondary_mouse_down(),
+            CursorLockMode::Off => false,
+        };
+
+        if should_lock {
+            if self.active_raw_cursor_lock.is_none() {
+                self.active_raw_cursor_lock = Some(CursorCapture::new());
+            }
+        } else {
+            self.active_raw_cursor_lock = None;
         }
     }
 }
@@ -527,21 +552,28 @@ fn has_arg(name: &str) -> bool {
 
 fn print_help() {
     println!(
-        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --no-mouse-capture             Do not hide or recenter the Windows cursor\n  --debug                        Print live input state\n  -h, --help                     Show help"
+        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --cursor-lock <mode>           Cursor lock mode: hold, always, off. Default: hold\n  --no-mouse-capture             Alias for --cursor-lock off\n  --debug                        Print live input state\n  -h, --help                     Show help"
     );
 }
 
 #[derive(Clone, Copy)]
 struct MapperConfig {
     mouse_sensitivity: i32,
-    mouse_capture: bool,
+    cursor_lock: CursorLockMode,
     debug: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CursorLockMode {
+    HoldButton,
+    Always,
+    Off,
 }
 
 impl MapperConfig {
     fn from_args() -> Self {
         let mut sensitivity = 500;
-        let mut mouse_capture = true;
+        let mut cursor_lock = CursorLockMode::HoldButton;
         let mut debug = false;
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -549,8 +581,16 @@ impl MapperConfig {
                 if let Some(value) = args.next().and_then(|raw| raw.parse::<i32>().ok()) {
                     sensitivity = value.clamp(1, 2000);
                 }
+            } else if arg == "--cursor-lock" {
+                if let Some(value) = args.next() {
+                    cursor_lock = match value.as_str() {
+                        "always" => CursorLockMode::Always,
+                        "off" | "none" | "false" => CursorLockMode::Off,
+                        _ => CursorLockMode::HoldButton,
+                    };
+                }
             } else if arg == "--no-mouse-capture" {
-                mouse_capture = false;
+                cursor_lock = CursorLockMode::Off;
             } else if arg == "--debug" {
                 debug = true;
             }
@@ -558,7 +598,7 @@ impl MapperConfig {
 
         Self {
             mouse_sensitivity: sensitivity,
-            mouse_capture,
+            cursor_lock,
             debug,
         }
     }

@@ -39,7 +39,17 @@ To change mouse sensitivity:
 skate-kbm --mouse-sensitivity 300
 ```
 
-By default, the mapper uses Windows Raw Input for mouse movement and keeps the visible cursor hidden/centered while it runs. If raw input is unavailable, it falls back to cursor capture. To test without hiding or recentering the cursor:
+By default, the mapper uses Windows Raw Input for mouse movement. The visible cursor is only hidden/centered while you hold a mouse button, so you can release the button to use the desktop normally.
+
+Cursor lock modes:
+
+```powershell
+skate-kbm --cursor-lock hold
+skate-kbm --cursor-lock always
+skate-kbm --cursor-lock off
+```
+
+If raw input is unavailable, it falls back to cursor capture. To test without hiding or recentering the cursor:
 
 ```powershell
 skate-kbm --no-mouse-capture

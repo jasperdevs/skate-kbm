@@ -47,7 +47,8 @@ Usage:
 
 Options:
   --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500
-  --no-mouse-capture             Do not hide or recenter the Windows cursor
+  --cursor-lock <mode>           Cursor lock mode: hold, always, off. Default: hold
+  --no-mouse-capture             Alias for --cursor-lock off
   --debug                        Print live input state
   -h, --help                     Show help
 
