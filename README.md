@@ -2,26 +2,26 @@
 
 <p align="center">Keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.</p>
 
-This is CLI-only and currently Windows-only.
+This is a plain terminal CLI. It does not use a full-screen TUI or any non-Node JavaScript runtime.
 
 ## Install
 
-Install globally with Bun:
+Install globally with npm:
 
 ```powershell
-bun add -g skate-kbm
+npm install -g skate-kbm
 skate-kbm --help
 ```
 
-Install only adds the command. Start the screen with `skate-kbm`.
+Install adds the `skate-kbm` command and the native mapper binary.
 
 Requirements:
 
 - Windows 10 or 11
-- [Bun](https://bun.sh/)
+- [Node.js](https://nodejs.org/) 20 or newer
 - [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases) driver
 
-Windows needs a signed virtual controller driver before games can see a fake Xbox controller. If the app says it cannot connect, install the driver from the source repo with `bun run driver`.
+Windows needs a signed virtual controller driver before games can see a fake Xbox controller. If the app says it cannot connect, install the driver from the source repo with `npm run driver`, or install ViGEmBus manually from its release page.
 
 ## Use
 
@@ -30,6 +30,8 @@ skate-kbm
 ```
 
 Keep the terminal open, then launch your game. Press `Ctrl+C` to stop the mapper.
+
+The command prints normal terminal output only. It should not switch screens, clear your terminal, or close the terminal window.
 
 To change mouse sensitivity:
 
@@ -42,14 +44,16 @@ skate-kbm --mouse-sensitivity 300
 <details>
 <summary>Developer setup</summary>
 
-Developers also need [Rust](https://www.rust-lang.org/tools/install) to rebuild the native Windows mapper. OpenTUI is currently Bun-first, so Bun is the right runtime for the CLI shell.
+Developers also need [Rust](https://www.rust-lang.org/tools/install) to rebuild the native Windows mapper.
 
 ```powershell
-bun install
-bun run build
-bun run driver
-bun start
+npm install
+npm run build
+npm run driver
+npm start
 ```
+
+`npm run build` compiles the Rust mapper and copies it to `dist/app/mapper/skate-kbm-mapper.exe`, which is the binary shipped in the npm package.
 
 </details>
 
@@ -74,7 +78,8 @@ bun start
 <details>
 <summary>Notes</summary>
 
-- The app uses OpenTUI for the CLI shell and a Rust Windows mapper process for keyboard, mouse, and virtual controller output.
+- The npm package has no JavaScript runtime dependencies.
+- The app uses a plain Node.js CLI wrapper and a Rust Windows mapper process for keyboard, mouse, and virtual controller output.
 - The game still sees a controller, not native keyboard and mouse.
 - ViGEmBus is required because Windows needs a driver to expose the virtual Xbox controller.
 - ViGEmBus is archived, so it is treated as the current compatibility backend rather than a forever dependency.

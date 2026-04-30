@@ -1,14 +1,13 @@
 {
   "name": "skate-kbm",
-  "version": "0.1.2",
-  "description": "Keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
+  "version": "0.1.3",
+  "description": "Plain Node CLI keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {
     "skate-kbm": "bin/skate-kbm.js"
   },
   "files": [
     "bin/skate-kbm.js",
-    "src/cli",
     "dist/app/mapper/skate-kbm-mapper.exe",
     "scripts/install-vigembus.ps1",
     "README.md",
@@ -29,13 +28,12 @@
   },
   "homepage": "https://github.com/jasperdevs/skate-kbm#readme",
   "keywords": [
-    "bun",
-    "opentui",
     "keyboard",
     "mouse",
     "controller",
     "xbox",
     "vigembus",
+    "node",
     "windows"
   ],
   "license": "MIT",
@@ -43,22 +41,14 @@
     "access": "public"
   },
   "engines": {
-    "bun": ">=1.3.0"
+    "node": ">=20"
   },
   "scripts": {
-    "build": "bun run build:mapper && bun run build:cli",
+    "build": "npm run build:mapper",
     "build:mapper": "cargo build --release && powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ./dist/app/mapper | Out-Null; Copy-Item ./target/release/skate-kbm-mapper.exe ./dist/app/mapper/skate-kbm-mapper.exe -Force\"",
-    "build:cli": "bun build --compile --target=bun --outfile ./dist/app/skate-kbm.exe ./src/cli/index.ts",
     "driver": "powershell -ExecutionPolicy Bypass -File ./scripts/install-vigembus.ps1",
-    "dev": "bun ./src/cli/index.ts",
-    "start": "bun ./src/cli/index.ts",
+    "dev": "node ./bin/skate-kbm.js",
+    "start": "node ./bin/skate-kbm.js",
     "check": "cargo check"
-  },
-  "dependencies": {
-    "@opentui/core": "^0.1.100"
-  },
-  "devDependencies": {
-    "@types/node": "^24.10.0",
-    "typescript": "^5.9.3"
   }
 }

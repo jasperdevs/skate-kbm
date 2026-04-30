@@ -7,8 +7,8 @@ use std::{env, thread, time::Duration};
 use vigem_client::{Client, TargetId, XButtons, XGamepad, Xbox360Wired};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT,
-    VK_RBUTTON, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
+    GetAsyncKeyState, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT, VK_RBUTTON,
+    VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -37,7 +37,7 @@ fn main() {
         Ok(client) => client,
         Err(err) => {
             eprintln!("error: could not connect to ViGEmBus");
-            eprintln!("error: run `bun run driver`, accept the Windows prompt, then try again");
+            eprintln!("error: run `npm run driver`, accept the Windows prompt, then try again");
             eprintln!("detail: {err}");
             std::process::exit(2);
         }
@@ -62,6 +62,7 @@ fn main() {
 
 fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Arc<AtomicBool>) {
     let mut last_pos = cursor_pos();
+    let mut mouse = MouseState::default();
     let mut tick = 0u32;
 
     while running.load(Ordering::SeqCst) {
@@ -72,7 +73,8 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
         };
         last_pos = current_pos;
 
-        let report = build_report(dx, dy, config.mouse_sensitivity);
+        mouse.update(dx, dy, config.mouse_sensitivity);
+        let report = build_report(mouse.rx, mouse.ry);
         let _ = target.update(&report);
 
         tick = tick.wrapping_add(1);
@@ -94,10 +96,14 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
     }
 }
 
-fn build_report(dx: i32, dy: i32, sensitivity: i32) -> XGamepad {
+fn build_report(mouse_rx: i16, mouse_ry: i16) -> XGamepad {
     let mut buttons = 0u16;
 
-    add_button(&mut buttons, XButtons::A, down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32) || down(VK_SPACE.0 as i32));
+    add_button(
+        &mut buttons,
+        XButtons::A,
+        down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32) || down(VK_SPACE.0 as i32),
+    );
     add_button(&mut buttons, XButtons::B, down(VK_ESCAPE.0 as i32));
     add_button(&mut buttons, XButtons::X, down(VK_E));
     add_button(&mut buttons, XButtons::Y, down(VK_R));
@@ -105,7 +111,11 @@ fn build_report(dx: i32, dy: i32, sensitivity: i32) -> XGamepad {
     add_button(&mut buttons, XButtons::RB, down(VK_F));
     add_button(&mut buttons, XButtons::BACK, down(VK_TAB.0 as i32));
     add_button(&mut buttons, XButtons::START, down(VK_RETURN.0 as i32));
-    add_button(&mut buttons, XButtons::LTHUMB, down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32));
+    add_button(
+        &mut buttons,
+        XButtons::LTHUMB,
+        down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32),
+    );
     add_button(&mut buttons, XButtons::RTHUMB, down(VK_C));
     add_button(&mut buttons, XButtons::UP, down(VK_UP.0 as i32));
     add_button(&mut buttons, XButtons::DOWN, down(VK_DOWN.0 as i32));
@@ -114,12 +124,50 @@ fn build_report(dx: i32, dy: i32, sensitivity: i32) -> XGamepad {
 
     XGamepad {
         buttons: XButtons::from(buttons),
-        left_trigger: if down(VK_RBUTTON.0 as i32) { u8::MAX } else { 0 },
-        right_trigger: if down(VK_LBUTTON.0 as i32) { u8::MAX } else { 0 },
+        left_trigger: if down(VK_RBUTTON.0 as i32) {
+            u8::MAX
+        } else {
+            0
+        },
+        right_trigger: if down(VK_LBUTTON.0 as i32) {
+            u8::MAX
+        } else {
+            0
+        },
         thumb_lx: stick_axis((down(VK_D) as i32) - (down(VK_A) as i32)),
         thumb_ly: stick_axis((down(VK_W) as i32) - (down(VK_S) as i32)),
-        thumb_rx: clamp_stick(dx.saturating_mul(sensitivity)),
-        thumb_ry: clamp_stick(dy.saturating_mul(-sensitivity)),
+        thumb_rx: mouse_rx,
+        thumb_ry: mouse_ry,
+    }
+}
+
+#[derive(Default)]
+struct MouseState {
+    rx: i16,
+    ry: i16,
+}
+
+impl MouseState {
+    fn update(&mut self, dx: i32, dy: i32, sensitivity: i32) {
+        let target_x = dx.saturating_mul(sensitivity) as f32;
+        let target_y = dy.saturating_mul(-sensitivity) as f32;
+        self.rx = smooth_axis(self.rx, target_x, dx == 0);
+        self.ry = smooth_axis(self.ry, target_y, dy == 0);
+    }
+}
+
+fn smooth_axis(current: i16, target: f32, idle: bool) -> i16 {
+    let current = current as f32;
+    let next = if idle {
+        current * 0.65
+    } else {
+        (current * 0.45) + (target * 0.55)
+    };
+
+    if next.abs() < 600.0 {
+        0
+    } else {
+        clamp_stick(next.round() as i32)
     }
 }
 
@@ -182,6 +230,8 @@ impl MapperConfig {
             }
         }
 
-        Self { mouse_sensitivity: sensitivity }
+        Self {
+            mouse_sensitivity: sensitivity,
+        }
     }
 }

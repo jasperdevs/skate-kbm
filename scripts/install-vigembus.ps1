@@ -9,7 +9,7 @@ if (-not $localInstaller) {
 }
 
 if ($localInstaller) {
-  Write-Host "Starting bundled ViGEmBus installer..."
+  Write-Host "Starting included ViGEmBus installer..."
   Start-Process $localInstaller.FullName
   exit 0
 }
