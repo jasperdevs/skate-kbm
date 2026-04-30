@@ -10,7 +10,7 @@ Install globally with npm:
 
 ```powershell
 npm install -g skate-kbm
-skate-kbm --help
+skate-kbm
 ```
 
 Install adds the `skate-kbm` command and the native mapper binary.
