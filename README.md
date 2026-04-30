@@ -29,7 +29,7 @@ Windows needs a signed virtual controller driver before games can see a fake Xbo
 skate-kbm
 ```
 
-Keep the terminal open, then launch your game. Press `Ctrl+C` to stop the mapper.
+Keep the terminal open, then launch your game. Press `Ctrl+C` in the terminal or `Ctrl+Alt+Backspace` anywhere to stop the mapper.
 
 The command prints normal terminal output only. It should not switch screens, clear your terminal, or close the terminal window.
 
@@ -39,7 +39,7 @@ To change mouse sensitivity:
 skate-kbm --mouse-sensitivity 300
 ```
 
-By default, the mapper hides and recenters the Windows cursor while it runs so mouse movement keeps producing controller look input instead of getting stuck at the edge of the screen. To leave the cursor alone:
+By default, the mapper uses Windows Raw Input for mouse movement so it does not get stuck at the edge of the screen. If raw input is unavailable, it falls back to cursor capture. To disable cursor capture fallback:
 
 ```powershell
 skate-kbm --no-mouse-capture

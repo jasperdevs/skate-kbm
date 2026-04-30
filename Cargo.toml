@@ -1,6 +1,6 @@
 [package]
 name = "skate-kbm-mapper"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/jasperdevs/skate-kbm"
@@ -15,6 +15,7 @@ ctrlc = "3.5.1"
 vigem-client = "0.1.4"
 windows = { version = "0.62.2", features = [
   "Win32_Foundation",
+  "Win32_UI_Input",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging"
 ] }

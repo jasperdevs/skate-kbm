@@ -50,5 +50,5 @@ Options:
   --no-mouse-capture             Do not hide or recenter the Windows cursor
   -h, --help                     Show help
 
-Keep this running, then launch your game. Press Ctrl+C to stop.`);
+Keep this running, then launch your game. Press Ctrl+C or Ctrl+Alt+Backspace to stop.`);
 }

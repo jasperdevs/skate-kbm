@@ -1,18 +1,26 @@
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
+    mpsc,
 };
-use std::{env, thread, time::Duration};
+use std::{env, mem::size_of, thread, time::Duration};
 
 use vigem_client::{Client, TargetId, XButtons, XGamepad, Xbox360Wired};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT, VK_RBUTTON,
-    VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
+    GetAsyncKeyState, VK_BACK, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT,
+    VK_MENU, VK_RBUTTON, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
+};
+use windows::Win32::UI::Input::{
+    GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RID_INPUT, RIDEV_INPUTSINK,
+    RIM_TYPEMOUSE, RegisterRawInputDevices,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SetCursorPos, ShowCursor,
+    CreateWindowExW, GetCursorPos, GetMessageW, GetSystemMetrics, HWND_MESSAGE, MSG, SM_CXSCREEN,
+    SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_SWAPBUTTON, SM_XVIRTUALSCREEN,
+    SM_YVIRTUALSCREEN, SetCursorPos, ShowCursor, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT,
 };
+use windows::core::w;
 
 const VK_A: i32 = 0x41;
 const VK_C: i32 = 0x43;
@@ -33,7 +41,11 @@ fn main() {
     let config = MapperConfig::from_args();
     let running = Arc::new(AtomicBool::new(true));
     let stop = running.clone();
-    let _ = ctrlc::set_handler(move || stop.store(false, Ordering::SeqCst));
+    if let Err(err) = ctrlc::set_handler(move || stop.store(false, Ordering::SeqCst)) {
+        eprintln!("error: could not install Ctrl+C handler");
+        eprintln!("detail: {err}");
+        std::process::exit(2);
+    }
 
     let client = match Client::connect() {
         Ok(client) => client,
@@ -57,25 +69,46 @@ fn main() {
 
     run_loop(&mut target, config, running);
 
-    let _ = target.update(&XGamepad::default());
-    let _ = target.unplug();
+    if let Err(err) = target.update(&XGamepad::default()) {
+        eprintln!("warning: could not reset virtual controller state: {err}");
+    }
+    if let Err(err) = target.unplug() {
+        eprintln!("warning: could not unplug virtual controller cleanly: {err}");
+    }
     println!("status: stopped");
 }
 
 fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Arc<AtomicBool>) {
     let mut mouse_input = MouseInput::new(config.mouse_capture);
     let mut mouse = MouseState::default();
+    let mut update_failures = 0u8;
     let mut tick = 0u32;
 
+    println!("status: mouse input {}", mouse_input.mode_name());
+
     while running.load(Ordering::SeqCst) {
+        if control_down() && down(VK_MENU.0 as i32) && down(VK_BACK.0 as i32) {
+            println!("status: Ctrl+Alt+Backspace pressed, stopping");
+            break;
+        }
+
         let (dx, dy) = mouse_input.delta();
 
         mouse.update(dx, dy, config.mouse_sensitivity);
         let report = build_report(mouse.rx, mouse.ry);
-        let _ = target.update(&report);
+        if let Err(err) = target.update(&report) {
+            update_failures = update_failures.saturating_add(1);
+            eprintln!("error: failed to update virtual controller: {err}");
+            if update_failures >= 5 {
+                eprintln!("error: stopping after repeated virtual controller update failures");
+                break;
+            }
+        } else {
+            update_failures = 0;
+        }
 
         tick = tick.wrapping_add(1);
-        if tick % 120 == 0 {
+        if tick.is_multiple_of(120) {
             println!(
                 "state: wasd={}{}{}{} mouse={},{} buttons={}{}",
                 pressed_char(VK_W),
@@ -94,33 +127,175 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
 }
 
 struct MouseInput {
-    capture: Option<MouseCapture>,
-    last_pos: Option<POINT>,
+    source: MouseInputSource,
 }
 
 impl MouseInput {
     fn new(capture: bool) -> Self {
-        let capture = capture.then(MouseCapture::new);
-        let last_pos = if capture.is_some() {
-            None
-        } else {
-            cursor_pos()
-        };
-        Self { capture, last_pos }
+        if let Some(raw) = RawMouseInput::new() {
+            return Self {
+                source: MouseInputSource::Raw(raw),
+            };
+        }
+
+        if capture {
+            return Self {
+                source: MouseInputSource::Capture(MouseCapture::new()),
+            };
+        }
+
+        Self {
+            source: MouseInputSource::Cursor {
+                last_pos: cursor_pos(),
+            },
+        }
     }
 
     fn delta(&mut self) -> (i32, i32) {
-        if let Some(capture) = &self.capture {
-            return capture.delta();
+        match &mut self.source {
+            MouseInputSource::Raw(raw) => raw.delta(),
+            MouseInputSource::Capture(capture) => capture.delta(),
+            MouseInputSource::Cursor { last_pos } => {
+                let current_pos = cursor_pos();
+                let delta = match (*last_pos, current_pos) {
+                    (Some(last), Some(current)) => (current.x - last.x, current.y - last.y),
+                    _ => (0, 0),
+                };
+                *last_pos = current_pos;
+                delta
+            }
+        }
+    }
+
+    fn mode_name(&self) -> &'static str {
+        match self.source {
+            MouseInputSource::Raw(_) => "raw",
+            MouseInputSource::Capture(_) => "cursor-capture fallback",
+            MouseInputSource::Cursor { .. } => "cursor fallback",
+        }
+    }
+}
+
+enum MouseInputSource {
+    Raw(RawMouseInput),
+    Capture(MouseCapture),
+    Cursor { last_pos: Option<POINT> },
+}
+
+struct RawMouseInput {
+    delta: Arc<Mutex<(i32, i32)>>,
+}
+
+impl RawMouseInput {
+    fn new() -> Option<Self> {
+        let delta = Arc::new(Mutex::new((0, 0)));
+        let thread_delta = Arc::clone(&delta);
+        let (ready_tx, ready_rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            if let Err(err) = raw_input_thread(thread_delta, ready_tx) {
+                eprintln!("error: raw mouse input unavailable: {err}");
+            }
+        });
+
+        match ready_rx.recv_timeout(Duration::from_millis(1500)) {
+            Ok(true) => Some(Self { delta }),
+            _ => None,
+        }
+    }
+
+    fn delta(&self) -> (i32, i32) {
+        match self.delta.lock() {
+            Ok(mut delta) => {
+                let current = *delta;
+                *delta = (0, 0);
+                current
+            }
+            Err(_) => (0, 0),
+        }
+    }
+}
+
+fn raw_input_thread(
+    delta: Arc<Mutex<(i32, i32)>>,
+    ready: mpsc::Sender<bool>,
+) -> windows::core::Result<()> {
+    unsafe {
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            w!("STATIC"),
+            w!("skate-kbm raw input"),
+            WINDOW_STYLE(0),
+            0,
+            0,
+            0,
+            0,
+            Some(HWND_MESSAGE),
+            None,
+            None,
+            None,
+        )?;
+
+        let device = RAWINPUTDEVICE {
+            usUsagePage: 0x01,
+            usUsage: 0x02,
+            dwFlags: RIDEV_INPUTSINK,
+            hwndTarget: hwnd,
+        };
+        RegisterRawInputDevices(&[device], size_of::<RAWINPUTDEVICE>() as u32)?;
+        let _ = ready.send(true);
+
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            if msg.message == WM_INPUT
+                && let Some((dx, dy)) = raw_mouse_delta(HRAWINPUT(msg.lParam.0 as _))
+                && let Ok(mut pending) = delta.lock()
+            {
+                pending.0 = pending.0.saturating_add(dx);
+                pending.1 = pending.1.saturating_add(dy);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn raw_mouse_delta(raw_input: HRAWINPUT) -> Option<(i32, i32)> {
+    unsafe {
+        let mut size = 0u32;
+        GetRawInputData(
+            raw_input,
+            RID_INPUT,
+            None,
+            &mut size,
+            size_of::<windows::Win32::UI::Input::RAWINPUTHEADER>() as u32,
+        );
+        if size == 0 {
+            return None;
         }
 
-        let current_pos = cursor_pos();
-        let delta = match (self.last_pos, current_pos) {
-            (Some(last), Some(current)) => (current.x - last.x, current.y - last.y),
-            _ => (0, 0),
-        };
-        self.last_pos = current_pos;
-        delta
+        if size as usize > size_of::<RAWINPUT>() {
+            return None;
+        }
+
+        let mut input = RAWINPUT::default();
+        let read = GetRawInputData(
+            raw_input,
+            RID_INPUT,
+            Some((&mut input as *mut RAWINPUT).cast()),
+            &mut size,
+            size_of::<windows::Win32::UI::Input::RAWINPUTHEADER>() as u32,
+        );
+        if read == u32::MAX || read != size {
+            return None;
+        }
+
+        if input.header.dwType != RIM_TYPEMOUSE.0 {
+            return None;
+        }
+
+        let mouse = input.data.mouse;
+        Some((mouse.lLastX, mouse.lLastY))
     }
 }
 
@@ -133,8 +308,8 @@ struct MouseCapture {
 impl MouseCapture {
     fn new() -> Self {
         let center = POINT {
-            x: unsafe { GetSystemMetrics(SM_CXSCREEN) / 2 },
-            y: unsafe { GetSystemMetrics(SM_CYSCREEN) / 2 },
+            x: virtual_screen_midpoint(SM_XVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CXSCREEN),
+            y: virtual_screen_midpoint(SM_YVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_CYSCREEN),
         };
 
         let capture = Self {
@@ -142,7 +317,9 @@ impl MouseCapture {
             restore_pos: cursor_pos(),
             _cursor: CursorVisibilityGuard::hide(),
         };
-        set_cursor_pos(center);
+        if !set_cursor_pos(center) {
+            eprintln!("warning: could not center cursor for capture fallback");
+        }
         capture
     }
 
@@ -153,8 +330,8 @@ impl MouseCapture {
 
         let dx = current.x - self.center.x;
         let dy = current.y - self.center.y;
-        if dx != 0 || dy != 0 {
-            set_cursor_pos(self.center);
+        if (dx != 0 || dy != 0) && !set_cursor_pos(self.center) {
+            return (0, 0);
         }
         (dx, dy)
     }
@@ -163,7 +340,7 @@ impl MouseCapture {
 impl Drop for MouseCapture {
     fn drop(&mut self) {
         if let Some(pos) = self.restore_pos {
-            set_cursor_pos(pos);
+            let _ = set_cursor_pos(pos);
         }
     }
 }
@@ -221,16 +398,8 @@ fn build_report(mouse_rx: i16, mouse_ry: i16) -> XGamepad {
 
     XGamepad {
         buttons: XButtons::from(buttons),
-        left_trigger: if down(VK_RBUTTON.0 as i32) {
-            u8::MAX
-        } else {
-            0
-        },
-        right_trigger: if down(VK_LBUTTON.0 as i32) {
-            u8::MAX
-        } else {
-            0
-        },
+        left_trigger: if secondary_mouse_down() { u8::MAX } else { 0 },
+        right_trigger: if primary_mouse_down() { u8::MAX } else { 0 },
         thumb_lx: stick_axis((down(VK_D) as i32) - (down(VK_A) as i32)),
         thumb_ly: stick_axis((down(VK_W) as i32) - (down(VK_S) as i32)),
         thumb_rx: mouse_rx,
@@ -288,8 +457,38 @@ fn cursor_pos() -> Option<POINT> {
     Some(point)
 }
 
-fn set_cursor_pos(point: POINT) {
-    let _ = unsafe { SetCursorPos(point.x, point.y) };
+fn set_cursor_pos(point: POINT) -> bool {
+    unsafe { SetCursorPos(point.x, point.y).is_ok() }
+}
+
+fn virtual_screen_midpoint(
+    origin_metric: windows::Win32::UI::WindowsAndMessaging::SYSTEM_METRICS_INDEX,
+    size_metric: windows::Win32::UI::WindowsAndMessaging::SYSTEM_METRICS_INDEX,
+    fallback_size_metric: windows::Win32::UI::WindowsAndMessaging::SYSTEM_METRICS_INDEX,
+) -> i32 {
+    let origin = unsafe { GetSystemMetrics(origin_metric) };
+    let size = unsafe { GetSystemMetrics(size_metric) };
+    if size > 0 {
+        origin + (size / 2)
+    } else {
+        unsafe { GetSystemMetrics(fallback_size_metric) / 2 }
+    }
+}
+
+fn primary_mouse_down() -> bool {
+    let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) != 0 };
+    let key = if swapped { VK_RBUTTON } else { VK_LBUTTON };
+    down(key.0 as i32)
+}
+
+fn secondary_mouse_down() -> bool {
+    let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) != 0 };
+    let key = if swapped { VK_LBUTTON } else { VK_RBUTTON };
+    down(key.0 as i32)
+}
+
+fn control_down() -> bool {
+    down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32)
 }
 
 fn stick_axis(direction: i32) -> i16 {

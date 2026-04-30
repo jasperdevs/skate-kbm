@@ -1,11 +1,27 @@
 $ErrorActionPreference = "Stop"
 
-$localInstaller = Get-ChildItem -Path (Join-Path $PSScriptRoot "..\drivers") -Filter "ViGEmBus*.exe" -ErrorAction SilentlyContinue |
-  Select-Object -First 1
+$searchRoots = @(
+  (Join-Path $PSScriptRoot "..\dist\app\drivers"),
+  (Join-Path $PSScriptRoot "..\drivers")
+)
 
-if (-not $localInstaller) {
-  $localInstaller = Get-ChildItem -Path (Join-Path $PSScriptRoot "..\drivers") -Filter "ViGEmBus*.msi" -ErrorAction SilentlyContinue |
+$localInstaller = $null
+foreach ($root in $searchRoots) {
+  if (-not (Test-Path $root)) {
+    continue
+  }
+
+  $localInstaller = Get-ChildItem -Path $root -Filter "ViGEmBus*.exe" -ErrorAction SilentlyContinue |
     Select-Object -First 1
+
+  if (-not $localInstaller) {
+    $localInstaller = Get-ChildItem -Path $root -Filter "ViGEmBus*.msi" -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+  }
+
+  if ($localInstaller) {
+    break
+  }
 }
 
 if ($localInstaller) {

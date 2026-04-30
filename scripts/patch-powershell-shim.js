@@ -1,23 +1,20 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-if (process.platform !== "win32") {
-  process.exit(0);
-}
+patchPowerShellShim();
 
-const prefix = process.env.npm_config_prefix;
-if (!prefix) {
-  process.exit(0);
-}
+function patchPowerShellShim() {
+  if (process.platform !== "win32") return;
 
-const shim = resolve(prefix, "skate-kbm.ps1");
-if (!existsSync(shim)) {
-  process.exit(0);
-}
+  const prefix = process.env.npm_config_prefix;
+  if (!prefix) return;
 
-writeFileSync(
-  shim,
-  `#!/usr/bin/env pwsh
+  const shim = resolve(prefix, "skate-kbm.ps1");
+  if (!existsSync(shim)) return;
+
+  writeFileSync(
+    shim,
+    `#!/usr/bin/env pwsh
 $basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent
 
 $exe=""
@@ -42,4 +39,5 @@ if (Test-Path "$basedir/node$exe") {
 $global:LASTEXITCODE=$LASTEXITCODE
 return
 `,
-);
+  );
+}
