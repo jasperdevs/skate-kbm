@@ -4,7 +4,7 @@
   "description": "Keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {
-    "skate-kbm": "./bin/skate-kbm.js"
+    "skate-kbm": "bin/skate-kbm.js"
   },
   "files": [
     "bin/skate-kbm.js",
