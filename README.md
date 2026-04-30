@@ -39,6 +39,12 @@ To change mouse sensitivity:
 skate-kbm --mouse-sensitivity 300
 ```
 
+By default, the mapper hides and recenters the Windows cursor while it runs so mouse movement keeps producing controller look input instead of getting stuck at the edge of the screen. To leave the cursor alone:
+
+```powershell
+skate-kbm --no-mouse-capture
+```
+
 ## Build from source
 
 <details>

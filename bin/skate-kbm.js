@@ -71,7 +71,8 @@ Usage:
   node ./bin/skate-kbm.js [options]
 
 Options:
-  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 220
+  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500
+  --no-mouse-capture             Do not hide or recenter the Windows cursor
   -h, --help                     Show help
 
 Keep this running, then launch your game. Press Ctrl+C to stop.`);

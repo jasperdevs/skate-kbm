@@ -10,7 +10,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT, VK_RBUTTON,
     VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SetCursorPos, ShowCursor,
+};
 
 const VK_A: i32 = 0x41;
 const VK_C: i32 = 0x43;
@@ -61,17 +63,12 @@ fn main() {
 }
 
 fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Arc<AtomicBool>) {
-    let mut last_pos = cursor_pos();
+    let mut mouse_input = MouseInput::new(config.mouse_capture);
     let mut mouse = MouseState::default();
     let mut tick = 0u32;
 
     while running.load(Ordering::SeqCst) {
-        let current_pos = cursor_pos();
-        let (dx, dy) = match (last_pos, current_pos) {
-            (Some(last), Some(current)) => (current.x - last.x, current.y - last.y),
-            _ => (0, 0),
-        };
-        last_pos = current_pos;
+        let (dx, dy) = mouse_input.delta();
 
         mouse.update(dx, dy, config.mouse_sensitivity);
         let report = build_report(mouse.rx, mouse.ry);
@@ -93,6 +90,106 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
         }
 
         thread::sleep(Duration::from_millis(8));
+    }
+}
+
+struct MouseInput {
+    capture: Option<MouseCapture>,
+    last_pos: Option<POINT>,
+}
+
+impl MouseInput {
+    fn new(capture: bool) -> Self {
+        let capture = capture.then(MouseCapture::new);
+        let last_pos = if capture.is_some() {
+            None
+        } else {
+            cursor_pos()
+        };
+        Self { capture, last_pos }
+    }
+
+    fn delta(&mut self) -> (i32, i32) {
+        if let Some(capture) = &self.capture {
+            return capture.delta();
+        }
+
+        let current_pos = cursor_pos();
+        let delta = match (self.last_pos, current_pos) {
+            (Some(last), Some(current)) => (current.x - last.x, current.y - last.y),
+            _ => (0, 0),
+        };
+        self.last_pos = current_pos;
+        delta
+    }
+}
+
+struct MouseCapture {
+    center: POINT,
+    restore_pos: Option<POINT>,
+    _cursor: CursorVisibilityGuard,
+}
+
+impl MouseCapture {
+    fn new() -> Self {
+        let center = POINT {
+            x: unsafe { GetSystemMetrics(SM_CXSCREEN) / 2 },
+            y: unsafe { GetSystemMetrics(SM_CYSCREEN) / 2 },
+        };
+
+        let capture = Self {
+            center,
+            restore_pos: cursor_pos(),
+            _cursor: CursorVisibilityGuard::hide(),
+        };
+        set_cursor_pos(center);
+        capture
+    }
+
+    fn delta(&self) -> (i32, i32) {
+        let Some(current) = cursor_pos() else {
+            return (0, 0);
+        };
+
+        let dx = current.x - self.center.x;
+        let dy = current.y - self.center.y;
+        if dx != 0 || dy != 0 {
+            set_cursor_pos(self.center);
+        }
+        (dx, dy)
+    }
+}
+
+impl Drop for MouseCapture {
+    fn drop(&mut self) {
+        if let Some(pos) = self.restore_pos {
+            set_cursor_pos(pos);
+        }
+    }
+}
+
+struct CursorVisibilityGuard {
+    hide_calls: i32,
+}
+
+impl CursorVisibilityGuard {
+    fn hide() -> Self {
+        let mut hide_calls = 0;
+        while unsafe { ShowCursor(false) } >= 0 {
+            hide_calls += 1;
+        }
+        hide_calls += 1;
+        Self { hide_calls }
+    }
+}
+
+impl Drop for CursorVisibilityGuard {
+    fn drop(&mut self) {
+        for _ in 0..self.hide_calls {
+            unsafe {
+                ShowCursor(true);
+            }
+        }
     }
 }
 
@@ -164,7 +261,7 @@ fn smooth_axis(current: i16, target: f32, idle: bool) -> i16 {
         (current * 0.45) + (target * 0.55)
     };
 
-    if next.abs() < 600.0 {
+    if next.abs() < 80.0 {
         0
     } else {
         clamp_stick(next.round() as i32)
@@ -191,6 +288,10 @@ fn cursor_pos() -> Option<POINT> {
     Some(point)
 }
 
+fn set_cursor_pos(point: POINT) {
+    let _ = unsafe { SetCursorPos(point.x, point.y) };
+}
+
 fn stick_axis(direction: i32) -> i16 {
     match direction {
         value if value > 0 => i16::MAX,
@@ -209,29 +310,34 @@ fn has_arg(name: &str) -> bool {
 
 fn print_help() {
     println!(
-        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 220\n  -h, --help                     Show help"
+        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --no-mouse-capture             Do not hide or recenter the Windows cursor\n  -h, --help                     Show help"
     );
 }
 
 #[derive(Clone, Copy)]
 struct MapperConfig {
     mouse_sensitivity: i32,
+    mouse_capture: bool,
 }
 
 impl MapperConfig {
     fn from_args() -> Self {
-        let mut sensitivity = 220;
+        let mut sensitivity = 500;
+        let mut mouse_capture = true;
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
             if arg == "--mouse-sensitivity" {
                 if let Some(value) = args.next().and_then(|raw| raw.parse::<i32>().ok()) {
                     sensitivity = value.clamp(1, 2000);
                 }
+            } else if arg == "--no-mouse-capture" {
+                mouse_capture = false;
             }
         }
 
         Self {
             mouse_sensitivity: sensitivity,
+            mouse_capture,
         }
     }
 }
