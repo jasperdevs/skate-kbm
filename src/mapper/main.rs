@@ -108,9 +108,9 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
         }
 
         tick = tick.wrapping_add(1);
-        if tick.is_multiple_of(120) {
+        if config.debug && tick.is_multiple_of(120) {
             println!(
-                "state: wasd={}{}{}{} mouse={},{} buttons={}{}",
+                "debug: wasd={}{}{}{} mouse={},{} buttons={}{} lt={} rt={}",
                 pressed_char(VK_W),
                 pressed_char(VK_A),
                 pressed_char(VK_S),
@@ -119,6 +119,8 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
                 dy,
                 if down(VK_LBUTTON.0 as i32) { "L" } else { "-" },
                 if down(VK_RBUTTON.0 as i32) { "R" } else { "-" },
+                if secondary_mouse_down() { "1" } else { "0" },
+                if primary_mouse_down() { "1" } else { "0" },
             );
         }
 
@@ -128,6 +130,7 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
 
 struct MouseInput {
     source: MouseInputSource,
+    _raw_cursor_lock: Option<CursorCapture>,
 }
 
 impl MouseInput {
@@ -135,12 +138,14 @@ impl MouseInput {
         if let Some(raw) = RawMouseInput::new() {
             return Self {
                 source: MouseInputSource::Raw(raw),
+                _raw_cursor_lock: capture.then(CursorCapture::new),
             };
         }
 
         if capture {
             return Self {
-                source: MouseInputSource::Capture(MouseCapture::new()),
+                source: MouseInputSource::Capture(CursorCapture::new()),
+                _raw_cursor_lock: None,
             };
         }
 
@@ -148,12 +153,18 @@ impl MouseInput {
             source: MouseInputSource::Cursor {
                 last_pos: cursor_pos(),
             },
+            _raw_cursor_lock: None,
         }
     }
 
     fn delta(&mut self) -> (i32, i32) {
         match &mut self.source {
-            MouseInputSource::Raw(raw) => raw.delta(),
+            MouseInputSource::Raw(raw) => {
+                if let Some(lock) = &self._raw_cursor_lock {
+                    lock.keep_centered();
+                }
+                raw.delta()
+            }
             MouseInputSource::Capture(capture) => capture.delta(),
             MouseInputSource::Cursor { last_pos } => {
                 let current_pos = cursor_pos();
@@ -168,17 +179,18 @@ impl MouseInput {
     }
 
     fn mode_name(&self) -> &'static str {
-        match self.source {
-            MouseInputSource::Raw(_) => "raw",
-            MouseInputSource::Capture(_) => "cursor-capture fallback",
-            MouseInputSource::Cursor { .. } => "cursor fallback",
+        match (&self.source, self._raw_cursor_lock.is_some()) {
+            (MouseInputSource::Raw(_), true) => "raw with cursor lock",
+            (MouseInputSource::Raw(_), false) => "raw",
+            (MouseInputSource::Capture(_), _) => "cursor-capture fallback",
+            (MouseInputSource::Cursor { .. }, _) => "cursor fallback",
         }
     }
 }
 
 enum MouseInputSource {
     Raw(RawMouseInput),
-    Capture(MouseCapture),
+    Capture(CursorCapture),
     Cursor { last_pos: Option<POINT> },
 }
 
@@ -299,13 +311,13 @@ fn raw_mouse_delta(raw_input: HRAWINPUT) -> Option<(i32, i32)> {
     }
 }
 
-struct MouseCapture {
+struct CursorCapture {
     center: POINT,
     restore_pos: Option<POINT>,
     _cursor: CursorVisibilityGuard,
 }
 
-impl MouseCapture {
+impl CursorCapture {
     fn new() -> Self {
         let center = POINT {
             x: virtual_screen_midpoint(SM_XVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CXSCREEN),
@@ -318,9 +330,15 @@ impl MouseCapture {
             _cursor: CursorVisibilityGuard::hide(),
         };
         if !set_cursor_pos(center) {
-            eprintln!("warning: could not center cursor for capture fallback");
+            eprintln!("warning: could not center cursor for capture");
         }
         capture
+    }
+
+    fn keep_centered(&self) {
+        if !set_cursor_pos(self.center) {
+            eprintln!("warning: could not keep cursor centered");
+        }
     }
 
     fn delta(&self) -> (i32, i32) {
@@ -337,7 +355,7 @@ impl MouseCapture {
     }
 }
 
-impl Drop for MouseCapture {
+impl Drop for CursorCapture {
     fn drop(&mut self) {
         if let Some(pos) = self.restore_pos {
             let _ = set_cursor_pos(pos);
@@ -509,7 +527,7 @@ fn has_arg(name: &str) -> bool {
 
 fn print_help() {
     println!(
-        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --no-mouse-capture             Do not hide or recenter the Windows cursor\n  -h, --help                     Show help"
+        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --no-mouse-capture             Do not hide or recenter the Windows cursor\n  --debug                        Print live input state\n  -h, --help                     Show help"
     );
 }
 
@@ -517,12 +535,14 @@ fn print_help() {
 struct MapperConfig {
     mouse_sensitivity: i32,
     mouse_capture: bool,
+    debug: bool,
 }
 
 impl MapperConfig {
     fn from_args() -> Self {
         let mut sensitivity = 500;
         let mut mouse_capture = true;
+        let mut debug = false;
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
             if arg == "--mouse-sensitivity" {
@@ -531,12 +551,15 @@ impl MapperConfig {
                 }
             } else if arg == "--no-mouse-capture" {
                 mouse_capture = false;
+            } else if arg == "--debug" {
+                debug = true;
             }
         }
 
         Self {
             mouse_sensitivity: sensitivity,
             mouse_capture,
+            debug,
         }
     }
 }

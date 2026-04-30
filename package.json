@@ -1,6 +1,6 @@
 {
   "name": "skate-kbm",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Plain Node CLI keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {

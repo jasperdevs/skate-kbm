@@ -48,6 +48,7 @@ Usage:
 Options:
   --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500
   --no-mouse-capture             Do not hide or recenter the Windows cursor
+  --debug                        Print live input state
   -h, --help                     Show help
 
 Keep this running, then launch your game. Press Ctrl+C or Ctrl+Alt+Backspace to stop.`);
