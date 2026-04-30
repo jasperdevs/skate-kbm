@@ -4,9 +4,10 @@
   "description": "Keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {
-    "skate-kbm": "./src/cli/index.ts"
+    "skate-kbm": "./bin/skate-kbm.js"
   },
   "files": [
+    "bin/skate-kbm.js",
     "src/cli",
     "dist/app/mapper/skate-kbm-mapper.exe",
     "scripts/install-vigembus.ps1",

@@ -21,6 +21,8 @@ bun add -g skate-kbm
 skate-kbm --help
 ```
 
+The installed command still runs on Bun; the tiny Node wrapper only gives npm a standard executable file to link.
+
 From source:
 
 ```powershell
