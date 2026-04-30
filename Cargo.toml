@@ -1,0 +1,20 @@
+[package]
+name = "skate-kbm-mapper"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/jasperdevs/skate-kbm"
+description = "Native keyboard and mouse to virtual Xbox 360 mapper for skate-kbm."
+
+[[bin]]
+name = "skate-kbm-mapper"
+path = "src/mapper/main.rs"
+
+[dependencies]
+ctrlc = "3.5.1"
+vigem-client = "0.1.4"
+windows = { version = "0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging"
+] }

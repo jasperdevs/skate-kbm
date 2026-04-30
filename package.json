@@ -1,19 +1,57 @@
 {
   "name": "skate-kbm",
   "version": "0.1.0",
-  "private": true,
+  "description": "Keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {
     "skate-kbm": "./src/cli/index.ts"
   },
+  "files": [
+    "src/cli",
+    "dist/app/mapper/skate-kbm-mapper.exe",
+    "scripts/install-vigembus.ps1",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jasperdevs/skate-kbm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jasperdevs/skate-kbm/issues"
+  },
+  "homepage": "https://github.com/jasperdevs/skate-kbm#readme",
+  "keywords": [
+    "bun",
+    "opentui",
+    "keyboard",
+    "mouse",
+    "controller",
+    "xbox",
+    "vigembus",
+    "windows"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "scripts": {
     "build": "bun run build:mapper && bun run build:cli",
-    "build:mapper": "dotnet publish ./src/SkateKbm.Mapper/SkateKbm.Mapper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o ./dist/app/mapper",
+    "build:mapper": "cargo build --release && powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ./dist/app/mapper | Out-Null; Copy-Item ./target/release/skate-kbm-mapper.exe ./dist/app/mapper/skate-kbm-mapper.exe -Force\"",
     "build:cli": "bun build --compile --target=bun --outfile ./dist/app/skate-kbm.exe ./src/cli/index.ts",
     "driver": "powershell -ExecutionPolicy Bypass -File ./scripts/install-vigembus.ps1",
     "dev": "bun ./src/cli/index.ts",
     "start": "bun ./src/cli/index.ts",
-    "check": "dotnet build ./src/SkateKbm.Mapper/SkateKbm.Mapper.csproj -c Release"
+    "check": "cargo check"
   },
   "dependencies": {
     "@opentui/core": "^0.1.100"
