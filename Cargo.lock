@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "skate-kbm-mapper"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "ctrlc",
  "vigem-client",

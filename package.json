@@ -1,6 +1,6 @@
 {
   "name": "skate-kbm",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Plain Node CLI keyboard and mouse to virtual Xbox 360 controller mapper for Windows games.",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "bin/skate-kbm.js",
     "dist/app/mapper/skate-kbm-mapper.exe",
+    "scripts/patch-powershell-shim.js",
     "scripts/install-vigembus.ps1",
     "README.md",
     "LICENSE"
@@ -46,6 +47,7 @@
   "scripts": {
     "build": "npm run build:mapper",
     "build:mapper": "cargo build --release && powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ./dist/app/mapper | Out-Null; Copy-Item ./target/release/skate-kbm-mapper.exe ./dist/app/mapper/skate-kbm-mapper.exe -Force\"",
+    "postinstall": "node ./scripts/patch-powershell-shim.js",
     "driver": "powershell -ExecutionPolicy Bypass -File ./scripts/install-vigembus.ps1",
     "dev": "node ./bin/skate-kbm.js",
     "start": "node ./bin/skate-kbm.js",

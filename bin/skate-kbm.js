@@ -22,38 +22,13 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 function runMapper() {
-  let stopping = false;
-  let exited = false;
   const child = spawn(mapper, args, {
     cwd: existsSync(packagedMapper) ? packagedRoot : root,
     stdio: ["ignore", "inherit", "inherit"],
     windowsHide: true,
   });
 
-  const stop = () => {
-    if (stopping) return;
-    stopping = true;
-    if (process.platform !== "win32") {
-      child.kill("SIGINT");
-    }
-    setTimeout(() => {
-      if (!exited) child.kill("SIGTERM");
-    }, 1500).unref();
-  };
-
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-
-  child.on("exit", (code, signal) => {
-    exited = true;
-    process.off("SIGINT", stop);
-    process.off("SIGTERM", stop);
-
-    if (stopping && (signal === "SIGINT" || signal === "SIGTERM")) {
-      process.exitCode = 0;
-      return;
-    }
-
+  child.on("exit", (code) => {
     process.exitCode = code ?? 1;
   });
 
