@@ -4,39 +4,27 @@
 
 This is CLI-only and currently Windows-only.
 
-## Requirements
+## Install
 
-- Windows 10 or 11
-- [Bun](https://bun.sh/)
-- [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases) driver
-
-Windows needs a signed virtual controller driver before normal games can see a fake Xbox controller. This project uses ViGEmBus for that part.
-
-## Setup
-
-From npm with Bun:
+Install globally with Bun:
 
 ```powershell
 bun add -g skate-kbm
 skate-kbm --help
 ```
 
-The installed command still runs on Bun; the tiny Node wrapper only gives npm a standard executable file to link.
+Requirements:
 
-From source:
+- Windows 10 or 11
+- [Bun](https://bun.sh/)
+- [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases) driver
 
-```powershell
-bun install
-bun run build
-bun run driver
-```
-
-Accept the Windows driver prompt if it appears.
+Windows needs a signed virtual controller driver before games can see a fake Xbox controller. If the app says it cannot connect, install the driver from the source repo with `bun run driver`.
 
 ## Use
 
 ```powershell
-bun start
+skate-kbm
 ```
 
 Keep the terminal open, then launch your game. Press `Ctrl+C` to stop the mapper.
@@ -44,18 +32,8 @@ Keep the terminal open, then launch your game. Press `Ctrl+C` to stop the mapper
 To change mouse sensitivity:
 
 ```powershell
-bun start -- --mouse-sensitivity 300
+skate-kbm --mouse-sensitivity 300
 ```
-
-## Install the driver
-
-If the app cannot connect a virtual controller, install the driver:
-
-```powershell
-bun run driver
-```
-
-Accept the Windows driver prompt, then run `bun start` again.
 
 ## Build from source
 
@@ -67,6 +45,8 @@ Developers also need [Rust](https://www.rust-lang.org/tools/install) to rebuild 
 ```powershell
 bun install
 bun run build
+bun run driver
+bun start
 ```
 
 </details>
