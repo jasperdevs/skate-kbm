@@ -86,11 +86,12 @@ npm start
 | `WASD` | Left stick |
 | Mouse | Right stick |
 | `Shift` or `Space` | `A` |
-| `Esc` | `B` |
+| `C` | `B` |
 | `E` | `X` |
 | `R` | `Y` |
 | `Q` | Left bumper |
 | `F` | Right bumper |
+| `V` | Right stick click |
 | Left click | Right trigger |
 | Right click | Left trigger |
 | Arrow keys | D-pad |

@@ -8,8 +8,8 @@ use std::{env, mem::size_of, thread, time::Duration};
 use vigem_client::{Client, TargetId, XButtons, XGamepad, Xbox360Wired};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_BACK, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT,
-    VK_MENU, VK_RBUTTON, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
+    GetAsyncKeyState, VK_BACK, VK_DOWN, VK_LBUTTON, VK_LCONTROL, VK_LEFT, VK_LSHIFT, VK_MENU,
+    VK_RBUTTON, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RSHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
 use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RID_INPUT, RIDEV_INPUTSINK,
@@ -31,6 +31,7 @@ const VK_M: i32 = 0x4D;
 const VK_Q: i32 = 0x51;
 const VK_R: i32 = 0x52;
 const VK_S: i32 = 0x53;
+const VK_V: i32 = 0x56;
 const VK_W: i32 = 0x57;
 
 fn main() {
@@ -448,7 +449,7 @@ fn build_report(mouse_rx: i16, mouse_ry: i16) -> XGamepad {
         XButtons::A,
         down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32) || down(VK_SPACE.0 as i32),
     );
-    add_button(&mut buttons, XButtons::B, down(VK_ESCAPE.0 as i32));
+    add_button(&mut buttons, XButtons::B, down(VK_C));
     add_button(&mut buttons, XButtons::X, down(VK_E));
     add_button(&mut buttons, XButtons::Y, down(VK_R));
     add_button(&mut buttons, XButtons::LB, down(VK_Q));
@@ -460,7 +461,7 @@ fn build_report(mouse_rx: i16, mouse_ry: i16) -> XGamepad {
         XButtons::LTHUMB,
         down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32),
     );
-    add_button(&mut buttons, XButtons::RTHUMB, down(VK_C));
+    add_button(&mut buttons, XButtons::RTHUMB, down(VK_V));
     add_button(&mut buttons, XButtons::UP, down(VK_UP.0 as i32));
     add_button(&mut buttons, XButtons::DOWN, down(VK_DOWN.0 as i32));
     add_button(&mut buttons, XButtons::LEFT, down(VK_LEFT.0 as i32));
