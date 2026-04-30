@@ -13,6 +13,8 @@ bun add -g skate-kbm
 skate-kbm --help
 ```
 
+Install only adds the command. Start the screen with `skate-kbm`.
+
 Requirements:
 
 - Windows 10 or 11

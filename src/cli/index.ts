@@ -25,16 +25,17 @@ if (!existsSync(mapper)) {
 let mapperProcess: ChildProcessWithoutNullStreams | undefined;
 let lastLine = "starting...";
 let stateLine = "";
+let renderTimer: ReturnType<typeof setInterval> | undefined;
+let renderer: Awaited<ReturnType<typeof createRenderer>> | undefined;
 
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 
-await renderIntro();
 startMapper();
-
-setInterval(() => {
-  renderFallback();
-}, 500);
+renderer = await createRenderer();
+renderTimer = setInterval(() => {
+  renderer?.update(lastLine, stateLine);
+}, 250);
 
 function startMapper() {
   mapperProcess = spawn(mapper, args, {
@@ -60,61 +61,87 @@ function startMapper() {
 }
 
 async function renderIntro() {
+  return createRenderer();
+}
+
+async function createRenderer() {
   try {
     const { createCliRenderer, TextRenderable } = await import("@opentui/core");
-    const renderer = await createCliRenderer();
-    renderer.root.add(
-      new TextRenderable(renderer, {
-        id: "title",
-        content: "skate-kbm",
-        position: "absolute",
-        left: 2,
-        top: 1,
-        fg: "#7dd3fc",
-      }),
-    );
-    renderer.root.add(
-      new TextRenderable(renderer, {
-        id: "hint",
-        content: "Virtual Xbox 360 mapper for keyboard and mouse. Ctrl+C stops.",
-        position: "absolute",
-        left: 2,
-        top: 3,
-        fg: "#e5e7eb",
-      }),
-    );
-    setTimeout(() => renderer.destroy(), 900);
+    const ui = await createCliRenderer({
+      screenMode: "alternate-screen",
+      consoleMode: "disabled",
+      externalOutputMode: "capture-stdout",
+      clearOnShutdown: true,
+      exitOnCtrlC: false,
+      targetFps: 12,
+      maxFps: 12,
+    });
+
+    const title = new TextRenderable(ui, {
+      id: "title",
+      content: "skate-kbm",
+      position: "absolute",
+      left: 2,
+      top: 1,
+      fg: "#7dd3fc",
+    });
+    const body = new TextRenderable(ui, {
+      id: "body",
+      content: screenContent("starting...", ""),
+      position: "absolute",
+      left: 2,
+      top: 3,
+      fg: "#e5e7eb",
+    });
+
+    ui.root.add(title);
+    ui.root.add(body);
+    ui.start();
+
+    return {
+      update(status: string, state: string) {
+        body.content = screenContent(status, state);
+        ui.requestRender();
+      },
+      destroy() {
+        ui.destroy();
+      },
+    };
   } catch {
-    renderFallback();
+    process.stdout.write(screenContent(lastLine, stateLine));
+    return {
+      update() {},
+      destroy() {},
+    };
   }
 }
 
-function renderFallback() {
-  process.stdout.write("\x1b[2J\x1b[H");
-  console.log("skate-kbm");
-  console.log("Virtual Xbox 360 mapper for keyboard and mouse.");
-  console.log("");
-  console.log("Controls");
-  console.log("  WASD                 left stick");
-  console.log("  Mouse                right stick");
-  console.log("  Shift / Space        A");
-  console.log("  Esc                  B");
-  console.log("  E                    X");
-  console.log("  R                    Y");
-  console.log("  Left click           RT");
-  console.log("  Right click          LT");
-  console.log("");
-  console.log(lastLine);
-  if (stateLine) console.log(stateLine);
-  console.log("");
-  console.log("Keep this running, then launch skate. from Steam. Press Ctrl+C to stop.");
+function screenContent(status: string, state: string) {
+  return `Virtual Xbox 360 mapper for keyboard and mouse.
+
+Controls
+  WASD                 left stick
+  Mouse                right stick
+  Shift / Space        A
+  Esc                  B
+  E                    X
+  R                    Y
+  Left click           RT
+  Right click          LT
+
+Status
+  ${status}
+  ${state || "state: waiting for input"}
+
+Keep this running, then launch your game. Press Ctrl+C to stop.`;
 }
 
 function stop() {
+  if (renderTimer) clearInterval(renderTimer);
   if (mapperProcess && !mapperProcess.killed) {
     mapperProcess.kill("SIGINT");
   }
-  process.stdout.write("\x1b[?25h");
+  renderer?.destroy();
   process.exit(0);
 }
 
