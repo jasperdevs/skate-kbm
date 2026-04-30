@@ -1,5 +1,19 @@
 $ErrorActionPreference = "Stop"
 
+$localInstaller = Get-ChildItem -Path (Join-Path $PSScriptRoot "..\drivers") -Filter "ViGEmBus*.exe" -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+
+if (-not $localInstaller) {
+  $localInstaller = Get-ChildItem -Path (Join-Path $PSScriptRoot "..\drivers") -Filter "ViGEmBus*.msi" -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+}
+
+if ($localInstaller) {
+  Write-Host "Starting bundled ViGEmBus installer..."
+  Start-Process $localInstaller.FullName
+  exit 0
+}
+
 $release = Invoke-RestMethod `
   -Headers @{ "User-Agent" = "skate-kbm" } `
   -Uri "https://api.github.com/repos/nefarius/ViGEmBus/releases/latest"
