@@ -47,10 +47,11 @@ Usage:
 
 Options:
   --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500
-  --cursor-lock <mode>           Cursor lock mode: hold, always, off. Default: hold
+  --cursor-lock <mode>           Cursor lock mode: toggle, always, off. Default: toggle
   --no-mouse-capture             Alias for --cursor-lock off
   --debug                        Print live input state
   -h, --help                     Show help
 
-Keep this running, then launch your game. Press Ctrl+C or Ctrl+Alt+Backspace to stop.`);
+Keep this running, then launch your game.
+Press Ctrl+Alt+M to toggle cursor lock. Press Ctrl+C or Ctrl+Alt+Backspace to stop.`);
 }

@@ -27,6 +27,7 @@ const VK_C: i32 = 0x43;
 const VK_D: i32 = 0x44;
 const VK_E: i32 = 0x45;
 const VK_F: i32 = 0x46;
+const VK_M: i32 = 0x4D;
 const VK_Q: i32 = 0x51;
 const VK_R: i32 = 0x52;
 const VK_S: i32 = 0x53;
@@ -83,6 +84,7 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
     let mut mouse = MouseState::default();
     let mut update_failures = 0u8;
     let mut tick = 0u32;
+    let mut toggle_shortcut_down = false;
 
     println!("status: mouse input {}", mouse_input.mode_name());
 
@@ -91,6 +93,18 @@ fn run_loop(target: &mut Xbox360Wired<Client>, config: MapperConfig, running: Ar
             println!("status: Ctrl+Alt+Backspace pressed, stopping");
             break;
         }
+
+        let toggle_pressed = control_down() && down(VK_MENU.0 as i32) && down(VK_M);
+        if toggle_pressed
+            && !toggle_shortcut_down
+            && let Some(locked) = mouse_input.toggle_cursor_lock()
+        {
+            println!(
+                "status: cursor lock {}",
+                if locked { "enabled" } else { "disabled" }
+            );
+        }
+        toggle_shortcut_down = toggle_pressed;
 
         let (dx, dy) = mouse_input.delta();
 
@@ -144,7 +158,7 @@ impl MouseInput {
             };
         }
 
-        if cursor_lock != CursorLockMode::Off {
+        if cursor_lock == CursorLockMode::Always {
             return Self {
                 source: MouseInputSource::Capture(CursorCapture::new()),
                 raw_cursor_lock_mode: CursorLockMode::Off,
@@ -188,7 +202,7 @@ impl MouseInput {
 
     fn mode_name(&self) -> &'static str {
         match (&self.source, self.raw_cursor_lock_mode) {
-            (MouseInputSource::Raw(_), CursorLockMode::HoldButton) => "raw with hold-to-lock cursor",
+            (MouseInputSource::Raw(_), CursorLockMode::Toggle) => "raw with optional cursor lock",
             (MouseInputSource::Raw(_), CursorLockMode::Always) => "raw with always-on cursor lock",
             (MouseInputSource::Raw(_), CursorLockMode::Off) => "raw",
             (MouseInputSource::Capture(_), _) => "cursor-capture fallback",
@@ -199,8 +213,7 @@ impl MouseInput {
     fn update_raw_cursor_lock(&mut self) {
         let should_lock = match self.raw_cursor_lock_mode {
             CursorLockMode::Always => true,
-            CursorLockMode::HoldButton => primary_mouse_down() || secondary_mouse_down(),
-            CursorLockMode::Off => false,
+            CursorLockMode::Toggle | CursorLockMode::Off => false,
         };
 
         if should_lock {
@@ -209,6 +222,20 @@ impl MouseInput {
             }
         } else {
             self.active_raw_cursor_lock = None;
+        }
+    }
+
+    fn toggle_cursor_lock(&mut self) -> Option<bool> {
+        if self.raw_cursor_lock_mode != CursorLockMode::Toggle {
+            return None;
+        }
+
+        if self.active_raw_cursor_lock.is_some() {
+            self.active_raw_cursor_lock = None;
+            Some(false)
+        } else {
+            self.active_raw_cursor_lock = Some(CursorCapture::new());
+            Some(true)
         }
     }
 }
@@ -552,7 +579,7 @@ fn has_arg(name: &str) -> bool {
 
 fn print_help() {
     println!(
-        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --cursor-lock <mode>           Cursor lock mode: hold, always, off. Default: hold\n  --no-mouse-capture             Alias for --cursor-lock off\n  --debug                        Print live input state\n  -h, --help                     Show help"
+        "skate-kbm-mapper\n\nCreates a virtual Xbox 360 controller and maps keyboard/mouse input.\n\nOptions:\n  --mouse-sensitivity <number>   Right-stick mouse sensitivity. Default: 500\n  --cursor-lock <mode>           Cursor lock mode: toggle, always, off. Default: toggle\n  --no-mouse-capture             Alias for --cursor-lock off\n  --debug                        Print live input state\n  -h, --help                     Show help\n\nShortcuts:\n  Ctrl+Alt+M                     Toggle cursor lock\n  Ctrl+Alt+Backspace             Stop"
     );
 }
 
@@ -565,7 +592,7 @@ struct MapperConfig {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CursorLockMode {
-    HoldButton,
+    Toggle,
     Always,
     Off,
 }
@@ -573,7 +600,7 @@ enum CursorLockMode {
 impl MapperConfig {
     fn from_args() -> Self {
         let mut sensitivity = 500;
-        let mut cursor_lock = CursorLockMode::HoldButton;
+        let mut cursor_lock = CursorLockMode::Toggle;
         let mut debug = false;
         let mut args = env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -586,7 +613,7 @@ impl MapperConfig {
                     cursor_lock = match value.as_str() {
                         "always" => CursorLockMode::Always,
                         "off" | "none" | "false" => CursorLockMode::Off,
-                        _ => CursorLockMode::HoldButton,
+                        _ => CursorLockMode::Toggle,
                     };
                 }
             } else if arg == "--no-mouse-capture" {
